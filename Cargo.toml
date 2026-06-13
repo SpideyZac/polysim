@@ -1,0 +1,38 @@
+[package]
+name = "polysim"
+version = "0.1.0"
+edition = "2024"
+description = "Headless PolyTrack physics simulation — deterministic multi-car WASM engine wrapper"
+license = "MIT"
+repository = "https://git.polymodloader.com/SpideyZac/polysim"
+readme = "README.md"
+keywords = ["polytrack", "simulation", "physics", "wasm", "gamedev"]
+categories = ["game-development", "simulation", "wasm"]
+exclude = ["target/", "*.wasm", "simulation_assets.bin"]
+
+[lib]
+name = "polysim"
+path = "src/lib.rs"
+
+[[bench]]
+name = "sim"
+harness = false
+
+[dependencies]
+anyhow = "1"
+bytemuck = "1"
+parry3d = "0.28.0"
+polytrack-codes = "0.3"
+thiserror = "2"
+wasmtime = "45"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+debug = 0
+
+[dev-dependencies]
+criterion = { version = "0.8.2", features = ["html_reports"] }
