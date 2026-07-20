@@ -8,14 +8,14 @@ Useful for TAS tooling, AI training, replay systems, and brute-force search.
 
 ## Requirements
 
-- **Rust 1.85+** (edition 2024 required by `polytrack-codes` and `wasmtime 45`)
+- **Rust 1.85+** (edition 2024 required by `polytrack-codes` and `wasmtime 47.0.0`)
 
 ## Usage
 
 ```toml
 [dependencies]
 polysim = { git = "https://git.polymodloader.com/SpideyZac/polysim.git" }
-wasmtime = "45"  # for Module when sharing across workers
+wasmtime = "47.0.0"  # for Module when sharing across workers
 ```
 
 ### Single car

@@ -19,12 +19,12 @@ name = "sim"
 harness = false
 
 [dependencies]
-anyhow = "1"
-bytemuck = "1"
-parry3d = "0.28.0"
+anyhow = "1.0.104"
+bytemuck = "1.25.2"
+parry3d = "0.29.0"
 polytrack-codes = "0.3"
-thiserror = "2"
-wasmtime = "45"
+thiserror = "2.0.19"
+wasmtime = "47.0.0"
 
 [profile.release]
 lto = true
