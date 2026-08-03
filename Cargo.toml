@@ -1,6 +1,6 @@
 [package]
 name = "polysim"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "Headless PolyTrack physics simulation: deterministic multi-car WASM engine wrapper"
 license = "MIT"
