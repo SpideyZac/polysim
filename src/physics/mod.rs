@@ -27,4 +27,5 @@ pub use exports::{
     AddTrackPartConfigArgs, CreateCarModelArgs, Exports, InitCarCollisionShapeArgs,
     UpdateCarModelArgs,
 };
-pub use instance::PolyTrackPhysics;
+pub use host::HostState;
+pub use instance::{PhysicsLinker, PolyTrackPhysics, create_linker};

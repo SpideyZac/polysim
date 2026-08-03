@@ -7,8 +7,6 @@
 //!
 //! [`SimulationWorker::update_car`]: super::worker::SimulationWorker::update_car
 
-use std::collections::HashMap;
-
 use anyhow::{Context, anyhow, bail};
 
 use super::{prepared::nearest_position, types::PlayerController};
@@ -159,7 +157,7 @@ impl CarState {
     pub(super) fn deserialize(
         buf: &[u8],
         max_checkpoint: u16,
-        checkpoint_positions: &HashMap<u16, [f32; 3]>,
+        checkpoint_positions: &[Option<[f32; 3]>],
         finish_positions: &[[f32; 3]],
     ) -> anyhow::Result<Self> {
         let mut r = Cursor::new(buf);
@@ -241,9 +239,10 @@ impl CarState {
             nearest_position(&position, finish_positions)
                 .ok_or_else(|| anyhow!("no finish-line blocks found on track"))?
         } else {
-            *checkpoint_positions
-                .get(&next_checkpoint_index)
-                .ok_or_else(|| anyhow!("checkpoint {next_checkpoint_index} not in map"))?
+            checkpoint_positions
+                .get(next_checkpoint_index as usize)
+                .and_then(|p| *p)
+                .ok_or_else(|| anyhow!("checkpoint {next_checkpoint_index} not in table"))?
         };
 
         Ok(Self {
@@ -343,8 +342,6 @@ impl<'a> Cursor<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
 
     #[test]
@@ -450,8 +447,16 @@ mod tests {
     fn finish_pos() -> Vec<[f32; 3]> {
         vec![[10., 0., 0.], [20., 0., 0.]]
     }
-    fn cp_map(entries: &[(u16, [f32; 3])]) -> HashMap<u16, [f32; 3]> {
-        entries.iter().copied().collect()
+    /// Build a dense checkpoint-position table (index = checkpoint number)
+    /// from sparse `(index, position)` entries, mirroring how
+    /// `PreparedTrack` builds it in production.
+    fn cp_map(entries: &[(u16, [f32; 3])]) -> Vec<Option<[f32; 3]>> {
+        let max = entries.iter().map(|(k, _)| *k).max().unwrap_or(0);
+        let mut v = vec![None; max as usize + 1];
+        for &(k, pos) in entries {
+            v[k as usize] = Some(pos);
+        }
+        v
     }
 
     #[test]
@@ -499,7 +504,7 @@ mod tests {
             .u8(0x00)
             .build();
 
-        let s = CarState::deserialize(&buf, 5, &HashMap::new(), &finish_pos()).unwrap();
+        let s = CarState::deserialize(&buf, 5, &[], &finish_pos()).unwrap();
         assert_eq!(s.finish_frames, Some(9999));
         assert!(s.is_finishline_cp);
     }
@@ -586,7 +591,7 @@ mod tests {
     #[test]
     fn finishline_when_index_equals_max_plus_one() {
         let buf = minimal(0x00, 5, [0.; 3], [0., 0., 0., 1.], 0., 0x00);
-        let s = CarState::deserialize(&buf, 4, &HashMap::new(), &finish_pos()).unwrap();
+        let s = CarState::deserialize(&buf, 4, &[], &finish_pos()).unwrap();
         assert!(s.is_finishline_cp);
         assert_eq!(s.next_checkpoint_position, [10., 0., 0.]);
     }
@@ -603,7 +608,7 @@ mod tests {
     #[test]
     fn finishline_when_max_checkpoint_zero() {
         let buf = minimal(0x00, 0, [0.; 3], [0., 0., 0., 1.], 0., 0x00);
-        let s = CarState::deserialize(&buf, 0, &HashMap::new(), &finish_pos()).unwrap();
+        let s = CarState::deserialize(&buf, 0, &[], &finish_pos()).unwrap();
         assert!(s.is_finishline_cp);
     }
 
@@ -611,13 +616,13 @@ mod tests {
     fn finishline_wrapping_add_at_u16_max() {
         // max=u16::MAX → wrapping_add(1)=0 → next_cp=0 triggers finish line
         let buf = minimal(0x00, 0, [0.; 3], [0., 0., 0., 1.], 0., 0x00);
-        let s = CarState::deserialize(&buf, u16::MAX, &HashMap::new(), &finish_pos()).unwrap();
+        let s = CarState::deserialize(&buf, u16::MAX, &[], &finish_pos()).unwrap();
         assert!(s.is_finishline_cp);
     }
 
     #[test]
     fn truncated_buffer_errors() {
-        assert!(CarState::deserialize(&[0u8; 4], 0, &HashMap::new(), &finish_pos()).is_err());
+        assert!(CarState::deserialize(&[0u8; 4], 0, &[], &finish_pos()).is_err());
     }
 
     #[test]
@@ -631,20 +636,20 @@ mod tests {
             .vec4(0., 0., 0., 1.)
             .u8(5) // invalid
             .build();
-        let err = CarState::deserialize(&buf, 0, &HashMap::new(), &finish_pos()).unwrap_err();
+        let err = CarState::deserialize(&buf, 0, &[], &finish_pos()).unwrap_err();
         assert!(err.to_string().contains("exceeds maximum"));
     }
 
     #[test]
     fn missing_checkpoint_errors() {
         let buf = minimal(0x00, 3, [0.; 3], [0., 0., 0., 1.], 0., 0x00);
-        assert!(CarState::deserialize(&buf, 5, &HashMap::new(), &finish_pos()).is_err());
+        assert!(CarState::deserialize(&buf, 5, &[], &finish_pos()).is_err());
     }
 
     #[test]
     fn empty_finish_positions_errors() {
         let buf = minimal(0x00, 6, [0.; 3], [0., 0., 0., 1.], 0., 0x00);
-        assert!(CarState::deserialize(&buf, 5, &HashMap::new(), &[]).is_err());
+        assert!(CarState::deserialize(&buf, 5, &[], &[]).is_err());
     }
 
     #[test]

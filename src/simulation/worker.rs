@@ -1,6 +1,6 @@
 //! The [`SimulationWorker`] drives one WASM physics instance.
 
-use anyhow::{Context, anyhow};
+use anyhow::{Context, anyhow, bail};
 use bytemuck::cast_slice;
 
 use super::{car_state::CarState, prepared::PreparedTrack, types::PlayerController};
@@ -9,9 +9,13 @@ use crate::{
     physics::{Exports, PolyTrackPhysics},
 };
 
+/// Upper bound on `car_id`, since ids are used to directly index a dense
+/// `Vec`. Far beyond any realistic simultaneous-car count; exists only to
+/// stop a stray huge id from forcing a huge allocation.
+const MAX_CAR_ID: u32 = 1 << 16;
+
 /// Per-car state tracked on the Rust side.
 struct Car {
-    id: u32,
     controls: PlayerController,
     /// Pointer to this car's dedicated 227-byte state read-back buffer in WASM heap.
     state_buffer_ptr: i32,
@@ -50,7 +54,12 @@ struct Car {
 pub struct SimulationWorker {
     physics: PolyTrackPhysics,
     exports: Exports,
-    cars: Vec<Car>,
+    /// Dense, id-indexed car storage: `cars[id]` is `Some` iff a car with
+    /// that id currently exists. Car ids are small caller-chosen integers
+    /// (see `MAX_CAR_ID`), so direct indexing gives O(1) lookups in
+    /// `set_car_controls`/`update_car` instead of the linear scan a
+    /// `Vec<Car>` + `.find()` would need on every tick.
+    cars: Vec<Option<Car>>,
     /// Pointer to the packed track data blob in WASM heap.
     track_ptr: i32,
     /// Number of 19-byte block records in the track blob.
@@ -181,11 +190,15 @@ impl SimulationWorker {
 
     /// Spawn a new car in the simulation at the track's start position.
     ///
-    /// `car_id` must be unique among all cars currently in this worker.
+    /// `car_id` must be unique among all cars currently in this worker and
+    /// below [`MAX_CAR_ID`] (car ids directly index internal storage).
     /// Each car gets its own dedicated WASM state buffer so multiple cars
     /// can be updated independently without overwriting each other's output.
     pub fn create_car(&mut self, car_id: u32) -> anyhow::Result<()> {
-        let s = &self.prepared.start;
+        let idx = self.car_index(car_id)?;
+        if matches!(self.cars.get(idx), Some(Some(_))) {
+            bail!("car {car_id} already exists");
+        }
 
         // Allocate a dedicated 227-byte read-back buffer for this car.
         let state_buffer_ptr = self
@@ -193,6 +206,63 @@ impl SimulationWorker {
             .alloc_bytes(&[0u8; 227])
             .with_context(|| format!("allocate state buffer for car {car_id}"))?;
 
+        self.spawn_car_model(car_id)
+            .with_context(|| format!("spawn car model for car {car_id}"))?;
+
+        if idx >= self.cars.len() {
+            self.cars.resize_with(idx + 1, || None);
+        }
+        self.cars[idx] = Some(Car {
+            controls: PlayerController::default(),
+            state_buffer_ptr,
+        });
+        Ok(())
+    }
+
+    /// Remove a car from the simulation and free its WASM-side resources.
+    pub fn delete_car(&mut self, car_id: u32) -> anyhow::Result<()> {
+        self.physics
+            .call(&self.exports.delete_car_model, car_id as i32)?;
+        if let Some(slot) = self.cars.get_mut(car_id as usize)
+            && let Some(car) = slot.take()
+        {
+            self.physics.free_wasm(car.state_buffer_ptr)?;
+        }
+        Ok(())
+    }
+
+    /// Respawn `car_id` at the track's start position without touching its
+    /// WASM-heap state buffer.
+    ///
+    /// Equivalent to `delete_car` followed by `create_car`, but skips the
+    /// `malloc`/`free` round-trip through the WASM allocator by reusing the
+    /// buffer the car already has. Prefer this for reset-heavy workloads
+    /// (brute-force search, TAS tooling) that repeatedly restart a car from
+    /// scratch.
+    pub fn reset_car(&mut self, car_id: u32) -> anyhow::Result<()> {
+        if !matches!(self.cars.get(car_id as usize), Some(Some(_))) {
+            bail!("car {car_id} not found");
+        }
+
+        self.physics
+            .call(&self.exports.delete_car_model, car_id as i32)?;
+        self.spawn_car_model(car_id)
+            .with_context(|| format!("respawn car model for car {car_id}"))?;
+
+        // Controls reset to defaults, matching a from-scratch `create_car`.
+        if let Some(Some(car)) = self.cars.get_mut(car_id as usize) {
+            car.controls = PlayerController::default();
+        }
+        Ok(())
+    }
+
+    /// Call the WASM `create_car_model` export for `car_id` at the track's
+    /// start position. Shared by [`create_car`] and [`reset_car`].
+    ///
+    /// [`create_car`]: Self::create_car
+    /// [`reset_car`]: Self::reset_car
+    fn spawn_car_model(&mut self, car_id: u32) -> anyhow::Result<()> {
+        let s = &self.prepared.start;
         self.physics.call(
             &self.exports.create_car_model,
             (
@@ -213,24 +283,15 @@ impl SimulationWorker {
                 s.quaternion[3],
             ),
         )?;
-
-        self.cars.push(Car {
-            id: car_id,
-            controls: PlayerController::default(),
-            state_buffer_ptr,
-        });
         Ok(())
     }
 
-    /// Remove a car from the simulation and free its WASM-side resources.
-    pub fn delete_car(&mut self, car_id: u32) -> anyhow::Result<()> {
-        self.physics
-            .call(&self.exports.delete_car_model, car_id as i32)?;
-        if let Some(pos) = self.cars.iter().position(|c| c.id == car_id) {
-            let car = self.cars.remove(pos);
-            self.physics.free_wasm(car.state_buffer_ptr)?;
+    /// Validate `car_id` and return its index into `cars`.
+    fn car_index(&self, car_id: u32) -> anyhow::Result<usize> {
+        if car_id >= MAX_CAR_ID {
+            bail!("car id {car_id} exceeds maximum of {MAX_CAR_ID}");
         }
-        Ok(())
+        Ok(car_id as usize)
     }
 
     /// Replace the input state for `car_id`.
@@ -304,10 +365,14 @@ impl SimulationWorker {
     }
 
     /// Return a mutable reference to the car with `car_id`, or an error.
+    ///
+    /// O(1): car ids directly index `cars`, so this is a bounds check plus an
+    /// array access rather than the linear scan a `Vec<Car>` + `.find()`
+    /// would require.
     fn car_mut(&mut self, car_id: u32) -> anyhow::Result<&mut Car> {
         self.cars
-            .iter_mut()
-            .find(|c| c.id == car_id)
+            .get_mut(car_id as usize)
+            .and_then(Option::as_mut)
             .ok_or_else(|| anyhow!("car {car_id} not found"))
     }
 }

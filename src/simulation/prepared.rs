@@ -38,9 +38,15 @@ pub struct PreparedTrack {
     /// Highest checkpoint index present on the track.
     /// `0` means the track has no numbered checkpoints.
     pub(super) max_checkpoint: u16,
-    /// O(1) lookup: checkpoint index → world-space block centre.
+    /// O(1) direct-index lookup: checkpoint index → world-space block centre.
     /// Built once; used every physics tick to resolve `next_checkpoint_position`.
-    pub(super) checkpoint_positions: HashMap<u16, [f32; 3]>,
+    ///
+    /// Checkpoint indices are dense small integers (`0..=max_checkpoint`), so
+    /// a `Vec` indexed directly by checkpoint number avoids hashing on the
+    /// hottest per-frame lookup in the crate. `None` means no block declared
+    /// that checkpoint index (shouldn't happen for a valid track, but kept
+    /// optional to mirror the old map's fallibility).
+    pub(super) checkpoint_positions: Vec<Option<[f32; 3]>>,
     /// World-space positions of every finish-line block.
     /// Used to find the nearest finish-line block when `is_finishline_cp` is true.
     pub(super) finish_positions: Vec<[f32; 3]>,
@@ -78,16 +84,17 @@ impl PreparedTrack {
         let track_bytes = pack_track_data(&track_info);
         let mountain = build_mountain_mesh(&track_info);
 
-        // Build the checkpoint position map (computed once, used every frame).
-        // The first block encountered for each checkpoint index wins, matching
-        // the original game's `next()` iterator behaviour.
-        let mut checkpoint_positions = HashMap::<u16, [f32; 3]>::new();
+        // Build the checkpoint position table (computed once, used every
+        // frame). The first block encountered for each checkpoint index wins,
+        // matching the original game's `next()` iterator behaviour.
+        let mut checkpoint_positions = vec![None; max_checkpoint as usize + 1];
         for part in &track_info.parts {
             for block in &part.blocks {
                 if let Some(cp) = block.cp_order {
-                    checkpoint_positions
-                        .entry(cp)
-                        .or_insert_with(|| block_world_pos(block, &track_info));
+                    let slot = &mut checkpoint_positions[cp as usize];
+                    if slot.is_none() {
+                        *slot = Some(block_world_pos(block, &track_info));
+                    }
                 }
             }
         }

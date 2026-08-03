@@ -24,7 +24,7 @@ use wasmtime::{Caller, Extern, Linker, bail};
 /// we cannot stop execution mid-trap cleanly, so we record the exit and check
 /// after every WASM call returns.
 #[derive(Default)]
-pub(super) struct HostState {
+pub struct HostState {
     /// Whether the module has signalled that it wants to exit.
     pub exited: bool,
     /// The exit code reported by the module (134 for `SIGABRT`/`abort()`).

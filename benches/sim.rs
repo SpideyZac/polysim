@@ -1,6 +1,6 @@
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use polysim::{
-    physics::{PolyTrackPhysics, create_engine},
+    physics::{PolyTrackPhysics, create_engine, create_linker},
     simulation::{PlayerController, PreparedTrack, SimulationWorker},
 };
 
@@ -42,9 +42,9 @@ fn bench_single_car(c: &mut Criterion) {
                             .unwrap();
                         worker.update_car(0).unwrap();
                     }
-                    // Reset for next iteration
-                    worker.delete_car(0).unwrap();
-                    worker.create_car(0).unwrap();
+                    // Reset for next iteration - reuses the car's state
+                    // buffer instead of freeing and reallocating it.
+                    worker.reset_car(0).unwrap();
                 });
             },
         );
@@ -84,10 +84,9 @@ fn bench_multi_car(c: &mut Criterion) {
                             worker.update_car(id).unwrap();
                         }
                     }
-                    // Reset all cars
+                    // Reset all cars - reuses each car's state buffer.
                     for id in 0..n_cars as u32 {
-                        worker.delete_car(id).unwrap();
-                        worker.create_car(id).unwrap();
+                        worker.reset_car(id).unwrap();
                     }
                 });
             },
@@ -96,15 +95,28 @@ fn bench_multi_car(c: &mut Criterion) {
     group.finish();
 }
 
-// Cost of create_car + delete_car - matters if you're resetting frequently
+// Cost of create_car + delete_car vs. reset_car - matters if you're
+// resetting frequently (brute-force search, TAS tooling).
 fn bench_car_lifecycle(c: &mut Criterion) {
-    let mut worker = make_worker();
-    c.bench_function("car_create_delete", |b| {
+    let mut group = c.benchmark_group("car_lifecycle");
+
+    group.bench_function("create_delete", |b| {
+        let mut worker = make_worker();
         b.iter(|| {
             worker.create_car(0).unwrap();
             worker.delete_car(0).unwrap();
         });
     });
+
+    group.bench_function("reset", |b| {
+        let mut worker = make_worker();
+        worker.create_car(0).unwrap();
+        b.iter(|| {
+            worker.reset_car(0).unwrap();
+        });
+    });
+
+    group.finish();
 }
 
 // Cost of PreparedTrack::from_export_string - should be done once
@@ -114,11 +126,37 @@ fn bench_track_decode(c: &mut Criterion) {
     });
 }
 
+// Cost of spawning a worker: a fresh Linker per instance (from_module) vs.
+// one Linker shared across every instantiation (from_module_with_linker).
+// Matters if you spawn many short-lived workers, e.g. one per branch of a
+// parallel search.
+fn bench_worker_spawn(c: &mut Criterion) {
+    let mut group = c.benchmark_group("worker_spawn");
+    let engine = create_engine();
+    let (_phys, module) = PolyTrackPhysics::from_file(&engine, WASM).unwrap();
+
+    group.bench_function("fresh_linker_per_instance", |b| {
+        b.iter(|| {
+            PolyTrackPhysics::from_module(&engine, &module).unwrap();
+        });
+    });
+
+    group.bench_function("shared_linker", |b| {
+        let linker = create_linker(&engine).unwrap();
+        b.iter(|| {
+            PolyTrackPhysics::from_module_with_linker(&engine, &module, &linker).unwrap();
+        });
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_single_car,
     bench_multi_car,
     bench_car_lifecycle,
     bench_track_decode,
+    bench_worker_spawn,
 );
 criterion_main!(benches);

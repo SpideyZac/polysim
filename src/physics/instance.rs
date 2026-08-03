@@ -10,6 +10,27 @@ use super::{
     host::{HostState, register},
 };
 
+/// A [`Linker`] with every physics-module host import already registered.
+///
+/// Building one of these and reusing it via
+/// [`PolyTrackPhysics::from_module_with_linker`] avoids re-registering the
+/// same handful of imports for every worker you spawn. On its own this is a
+/// small saving (a handful of hashmap inserts), but it adds up if you're
+/// creating many short-lived instances, e.g. one per branch of a brute-force
+/// search.
+pub type PhysicsLinker = Linker<HostState>;
+
+/// Build a [`PhysicsLinker`] with all physics-module imports registered.
+///
+/// Share the result across multiple [`PolyTrackPhysics::from_module_with_linker`]
+/// calls instead of letting [`PolyTrackPhysics::from_module`] build (and
+/// register) a fresh one every time.
+pub fn create_linker(engine: &Engine) -> Result<PhysicsLinker, PhysicsError> {
+    let mut linker = Linker::<HostState>::new(engine);
+    register(&mut linker)?;
+    Ok(linker)
+}
+
 /// A live instance of the PolyTrack physics WASM module.
 ///
 /// Owns the wasmtime [`Store`], linear [`Memory`], and all typed export
@@ -63,13 +84,33 @@ impl PolyTrackPhysics {
     /// module once with [`from_file`] or [`Module::from_file`], then call this
     /// for each additional worker.
     ///
+    /// Builds a fresh [`PhysicsLinker`] internally. If you're spawning many
+    /// workers in a hot loop, build one with [`create_linker`] once and use
+    /// [`from_module_with_linker`] instead to skip the repeated import
+    /// registration.
+    ///
     /// [`SimulationWorker`]: crate::simulation::SimulationWorker
     /// [`from_file`]: Self::from_file
+    /// [`from_module_with_linker`]: Self::from_module_with_linker
     pub fn from_module(engine: &Engine, module: &Module) -> Result<Self, PhysicsError> {
-        let mut store = Store::new(engine, HostState::default());
-        let mut linker = Linker::<HostState>::new(engine);
+        let linker = create_linker(engine)?;
+        Self::from_module_with_linker(engine, module, &linker)
+    }
 
-        register(&mut linker)?;
+    /// Instantiate from a pre-compiled [`Module`] using an already-built
+    /// [`PhysicsLinker`].
+    ///
+    /// Prefer this over [`from_module`] when spawning many workers: build the
+    /// linker once with [`create_linker`] and reuse it for every
+    /// instantiation instead of re-registering the same imports each time.
+    ///
+    /// [`from_module`]: Self::from_module
+    pub fn from_module_with_linker(
+        engine: &Engine,
+        module: &Module,
+        linker: &PhysicsLinker,
+    ) -> Result<Self, PhysicsError> {
+        let mut store = Store::new(engine, HostState::default());
 
         let instance = linker.instantiate(&mut store, module)?;
 
