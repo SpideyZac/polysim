@@ -3,7 +3,7 @@
 //! Each call to [`SimulationWorker::update_car`] causes the WASM module to
 //! write 227 bytes into a shared buffer.  The first 4 bytes are a
 //! version/padding header; [`CarState::deserialize`] receives the remaining
-//! 223 bytes as a `&[u8]` slice directly from WASM linear memory — no copy.
+//! 223 bytes as a `&[u8]` slice directly from WASM linear memory - no copy.
 //!
 //! [`SimulationWorker::update_car`]: super::worker::SimulationWorker::update_car
 
@@ -151,7 +151,7 @@ impl CarState {
     /// module.
     ///
     /// `buf` must be a slice of at least 223 bytes starting after the 4-byte
-    /// header.  Reads directly from WASM linear memory — no copy.
+    /// header.  Reads directly from WASM linear memory - no copy.
     ///
     /// # Errors
     /// Returns an error if the buffer is too short, if the impulse count

@@ -1,6 +1,6 @@
 //! Typed handles to every function exported by the physics WASM module.
 //!
-//! Export names are single ASCII characters — the result of Emscripten's
+//! Export names are single ASCII characters - the result of Emscripten's
 //! symbol minification.  They must match the compiled `.wasm` binary exactly.
 
 use wasmtime::TypedFunc;
@@ -84,7 +84,7 @@ pub type CreateCarModelArgs = (
 
 /// Arguments to `update_car_model` (export `"r"`).
 ///
-/// `(car_id, up, right, down, left, reset, state_buf_ptr)` — all `i32`,
+/// `(car_id, up, right, down, left, reset, state_buf_ptr)` - all `i32`,
 /// controls are `0` or `1`.
 pub type UpdateCarModelArgs = (i32, i32, i32, i32, i32, i32, i32);
 

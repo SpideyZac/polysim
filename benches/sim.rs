@@ -96,7 +96,7 @@ fn bench_multi_car(c: &mut Criterion) {
     group.finish();
 }
 
-// Cost of create_car + delete_car — matters if you're resetting frequently
+// Cost of create_car + delete_car - matters if you're resetting frequently
 fn bench_car_lifecycle(c: &mut Criterion) {
     let mut worker = make_worker();
     c.bench_function("car_create_delete", |b| {
@@ -107,7 +107,7 @@ fn bench_car_lifecycle(c: &mut Criterion) {
     });
 }
 
-// Cost of PreparedTrack::from_export_string — should be done once
+// Cost of PreparedTrack::from_export_string - should be done once
 fn bench_track_decode(c: &mut Criterion) {
     c.bench_function("track_decode", |b| {
         b.iter(|| PreparedTrack::from_export_string(TRACK).unwrap());

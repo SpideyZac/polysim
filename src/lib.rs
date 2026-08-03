@@ -1,4 +1,4 @@
-//! `polysim` — headless PolyTrack physics simulation.
+//! `polysim` - headless PolyTrack physics simulation.
 //!
 //! Wraps the PolyTrack WASM physics engine in a safe, ergonomic Rust API
 //! for deterministic, headless car simulation. Useful for TAS tooling, AI
@@ -9,10 +9,10 @@
 //!
 //! There are two layers:
 //!
-//! - **[`physics`]** — low-level WASM wrapper. Owns the wasmtime [`Store`],
+//! - **[`physics`]** - low-level WASM wrapper. Owns the wasmtime [`Store`],
 //!   linear memory, and typed export handles. You rarely need to touch this
 //!   directly.
-//! - **[`simulation`]** — high-level API. [`PreparedTrack`] decodes a track
+//! - **[`simulation`]** - high-level API. [`PreparedTrack`] decodes a track
 //!   export string once; [`SimulationWorker`] drives one WASM instance with
 //!   one or more simultaneous cars.
 //!
@@ -28,11 +28,11 @@
 //!     simulation::{PlayerController, PreparedTrack, SimulationWorker},
 //! };
 //!
-//! // 1. Compile the WASM module once — expensive, share across workers.
+//! // 1. Compile the WASM module once - expensive, share across workers.
 //! let engine = create_engine();
 //! let (physics, module) = PolyTrackPhysics::from_file(&engine, "physics.wasm")?;
 //!
-//! // 2. Decode static track data — also done once per track.
+//! // 2. Decode static track data - also done once per track.
 //! let prepared = PreparedTrack::from_export_string("PolyTrack24...")?;
 //!
 //! // 3. Create a worker, initialise it, and spawn a car.
@@ -90,7 +90,7 @@
 //!
 //! Compile the WASM module once, then instantiate one [`PolyTrackPhysics`] per
 //! thread via [`PolyTrackPhysics::from_module`]. Each worker owns its own WASM
-//! heap — no locking required between workers:
+//! heap - no locking required between workers:
 //!
 //! ```rust
 //! # use polysim::physics::{PolyTrackPhysics, create_engine};

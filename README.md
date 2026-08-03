@@ -3,19 +3,19 @@
 Headless [PolyTrack](https://kodub.itch.io/polytrack) physics simulation in Rust.
 
 Wraps the PolyTrack WASM physics engine in a safe, ergonomic API for
-deterministic, offline car simulation — no browser, no renderer, no game loop.
+deterministic, offline car simulation: no browser, no renderer, no game loop.
 Useful for TAS tooling, AI training, replay systems, and brute-force search.
 
 ## Requirements
 
-- **Rust 1.85+** (edition 2024 required by `polytrack-codes` and `wasmtime 47.0.0`)
+- **Rust 1.85+** (edition 2024 required by `polytrack-codes` and `wasmtime 47.0.3`)
 
 ## Usage
 
 ```toml
 [dependencies]
-polysim = { git = "https://git.polymodloader.com/SpideyZac/polysim.git" }
-wasmtime = "47.0.0"  # for Module when sharing across workers
+polysim = { git = "https://github.com/SpideyZac/polysim.git" }
+wasmtime = "47.0.3"  # for Module when sharing across workers
 ```
 
 ### Single car
@@ -47,7 +47,7 @@ loop {
 
 ### Multiple cars in one worker
 
-Each car gets its own WASM-heap output buffer — updates never clobber each other:
+Each car gets its own WASM-heap output buffer - updates never clobber each other:
 
 ```rust
 worker.create_car(0)?;
@@ -63,7 +63,7 @@ let state1 = worker.update_car(1)?;
 ### Multiple parallel workers
 
 Compile once, instantiate one `PolyTrackPhysics` per thread from the shared
-`Module`. Each worker owns its own WASM heap — no locking required:
+`Module`. Each worker owns its own WASM heap - no locking required:
 
 ```rust
 use wasmtime::Module;
@@ -85,7 +85,7 @@ std::thread::spawn({
 
 | Type | Description |
 | --- | --- |
-| [`PreparedTrack`] | Decoded track — construct once, share across workers |
+| [`PreparedTrack`] | Decoded track - construct once, share across workers |
 | [`SimulationWorker`] | Drives one WASM instance; supports N simultaneous cars |
 | [`CarState`] | Full per-frame snapshot: position, speed, checkpoints, wheels |
 | [`PlayerController`] | Five binary inputs: up, right, down, left, reset |

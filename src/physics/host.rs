@@ -53,7 +53,7 @@ const EXIT_CODE_ABORT: i32 = 134;
 ///
 /// Must be called before [`wasmtime::Linker::instantiate`].
 pub(super) fn register(linker: &mut Linker<HostState>) -> Result<(), wasmtime::Error> {
-    // "i" — __assert_fail(msg, file, line, func)
+    // "i" - __assert_fail(msg, file, line, func)
     linker.func_wrap(
         "a",
         "i",
@@ -72,7 +72,7 @@ pub(super) fn register(linker: &mut Linker<HostState>) -> Result<(), wasmtime::E
         },
     )?;
 
-    // "a" — __cxa_throw(exc_ptr, typeinfo_ptr, destructor)
+    // "a" - __cxa_throw(exc_ptr, typeinfo_ptr, destructor)
     linker.func_wrap(
         "a",
         "a",
@@ -99,7 +99,7 @@ pub(super) fn register(linker: &mut Linker<HostState>) -> Result<(), wasmtime::E
         },
     )?;
 
-    // "e" — abort()
+    // "e" - abort()
     linker.func_wrap(
         "a",
         "e",
@@ -110,7 +110,7 @@ pub(super) fn register(linker: &mut Linker<HostState>) -> Result<(), wasmtime::E
         },
     )?;
 
-    // "f" — emscripten_resize_heap(desired_bytes) → 1 on success, 0 on failure
+    // "f" - emscripten_resize_heap(desired_bytes) → 1 on success, 0 on failure
     linker.func_wrap(
         "a",
         "f",
@@ -135,7 +135,7 @@ pub(super) fn register(linker: &mut Linker<HostState>) -> Result<(), wasmtime::E
         },
     )?;
 
-    // No-op stubs — the physics module calls these but we don't need their
+    // No-op stubs - the physics module calls these but we don't need their
     // side effects in a headless simulation context.
     linker.func_wrap(
         "a",
@@ -157,7 +157,7 @@ pub(super) fn register(linker: &mut Linker<HostState>) -> Result<(), wasmtime::E
 /// Reads a null-terminated C string from WASM linear memory at `ptr`.
 ///
 /// Returns a placeholder string if the export is missing or `ptr` is out of
-/// bounds — never panics, since this is called from error-handling paths.
+/// bounds - never panics, since this is called from error-handling paths.
 fn read_cstr(caller: &mut Caller<'_, HostState>, ptr: u32) -> String {
     let mem = match caller.get_export("j") {
         Some(Extern::Memory(m)) => m,
@@ -195,17 +195,17 @@ fn read_cstr(caller: &mut Caller<'_, HostState>, ptr: u32) -> String {
 ///
 /// ## `std::string` on wasm32 (`sizeof` = 12, `__min_cap` = 11)
 ///
-/// **Short (SSO) mode** — string fits inline (length ≤ 10):
+/// **Short (SSO) mode** - string fits inline (length ≤ 10):
 /// ```text
-/// byte  0     : __size_ (u8)  — stores `len << 1`; low bit **0** = short
+/// byte  0     : __size_ (u8)  - stores `len << 1`; low bit **0** = short
 /// bytes 1..11 : inline character data (null-terminated)
 /// ```
 ///
-/// **Long (heap) mode** — string is heap-allocated:
+/// **Long (heap) mode** - string is heap-allocated:
 /// ```text
-/// bytes 0..4  : __cap_  (u32 LE) — capacity; low bit **1** = long
-/// bytes 4..8  : __size_ (u32 LE) — string length
-/// bytes 8..12 : __data_ (u32 LE) — pointer to heap buffer
+/// bytes 0..4  : __cap_  (u32 LE) - capacity; low bit **1** = long
+/// bytes 4..8  : __size_ (u32 LE) - string length
+/// bytes 8..12 : __data_ (u32 LE) - pointer to heap buffer
 /// ```
 ///
 /// Detection: `data[str_base] & 0x01 == 0` → short; `== 1` → long.
@@ -237,7 +237,7 @@ pub(super) fn decode_cpp_exception(data: &[u8], exc: usize) -> String {
         String::from_utf8_lossy(&data[char_start..char_start + len]).into_owned()
     } else {
         // Long (heap) mode
-        // __cap_  at str_base + 0  (already read for the flag — ignore it)
+        // __cap_  at str_base + 0  (already read for the flag - ignore it)
         // __size_ at str_base + 4
         // __data_ at str_base + 8
         let len = u32::from_le_bytes(data[str_base + 4..str_base + 8].try_into().unwrap()) as usize;

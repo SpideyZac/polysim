@@ -1,7 +1,7 @@
 //! Pre-computed, WASM-independent track data.
 //!
 //! Build a [`PreparedTrack`] once from a track export string, then hand it to
-//! as many [`SimulationWorker`]s as needed — e.g. one per AI agent, or one for
+//! as many [`SimulationWorker`]s as needed - e.g. one per AI agent, or one for
 //! replay alongside one for live simulation.  All expensive one-time work
 //! (track decoding, mountain mesh generation, checkpoint map construction) is
 //! done here, not in the worker.
@@ -141,7 +141,7 @@ struct StartBlock<'a> {
 /// `start_order` among all parts that have a `start_offset` in the asset
 /// database.
 ///
-/// Parts whose ID is not present in `asset_by_id` are silently skipped —
+/// Parts whose ID is not present in `asset_by_id` are silently skipped -
 /// they cannot be start parts, and this matches the original game's behaviour
 /// where an unknown part just fails the `.find()` lookup and `continue`s.
 ///
@@ -155,7 +155,7 @@ fn find_start_block<'a>(
     let mut best: Option<(u32, StartBlock)> = None;
 
     for part in &track_info.parts {
-        // Unknown part IDs are silently skipped — they cannot be start parts.
+        // Unknown part IDs are silently skipped - they cannot be start parts.
         let Some(part_data) = asset_by_id.get(&part.id) else {
             continue;
         };

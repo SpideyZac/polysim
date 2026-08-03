@@ -13,7 +13,7 @@ pub const FINISH_LINE_IDS: [u8; 4] = [74, 6, 78, 76];
 
 /// Pre-computed rotation quaternions indexed by `[direction][rotation]`.
 ///
-/// Stored as a `const` — zero runtime construction cost.  Values are the
+/// Stored as a `const` - zero runtime construction cost.  Values are the
 /// exact floating-point literals used by the original game; do **not** round
 /// or normalise them, as that would break determinism.
 #[allow(clippy::excessive_precision, clippy::approx_constant)]

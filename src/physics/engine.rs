@@ -5,7 +5,7 @@ use wasmtime::{Config, Engine, OptLevel};
 /// Creates a [`wasmtime::Engine`] configured for maximum physics throughput.
 ///
 /// Settings applied:
-/// - **Cranelift `Speed` optimisation level** — maximises JIT quality at the
+/// - **Cranelift `Speed` optimisation level** - maximises JIT quality at the
 ///   cost of slightly longer first-compile time (acceptable; modules are
 ///   compiled once and reused).
 ///

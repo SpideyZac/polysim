@@ -70,7 +70,7 @@ impl SimulationWorker {
     /// Allocate WASM memory for the track and mountain data and return a new
     /// worker.
     ///
-    /// Does **not** call [`init`] — that must be called separately before
+    /// Does **not** call [`init`] - that must be called separately before
     /// creating any cars, so that callers can choose when to pay the
     /// initialisation cost.
     ///

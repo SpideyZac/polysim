@@ -59,7 +59,7 @@ impl PolyTrackPhysics {
 
     /// Instantiate from a pre-compiled [`Module`].
     ///
-    /// Prefer this when spawning multiple [`SimulationWorker`]s — compile the
+    /// Prefer this when spawning multiple [`SimulationWorker`]s - compile the
     /// module once with [`from_file`] or [`Module::from_file`], then call this
     /// for each additional worker.
     ///
@@ -179,7 +179,7 @@ impl PolyTrackPhysics {
 
     /// Clone the [`Exports`] handle set.
     ///
-    /// Cloning is cheap — all handles are reference-counted internally by
+    /// Cloning is cheap - all handles are reference-counted internally by
     /// wasmtime.  The cloned handles share the same store and are only valid
     /// while `self` lives.
     pub fn exports(&self) -> Exports {
