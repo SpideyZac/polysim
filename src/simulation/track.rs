@@ -9,7 +9,14 @@
 use std::f32::consts::{PI, SQRT_2};
 
 use anyhow::anyhow;
-use polytrack_codes::v6::{TrackInfo, decode_track_code, decode_track_data};
+use polytrack_codes::{
+    v5,
+    v6::{
+        Block, Direction,
+        Environment::{Desert, Summer, Winter},
+        Part, TrackInfo, decode_track_code, decode_track_data,
+    },
+};
 
 use super::types::PART_SIZE;
 
@@ -50,6 +57,56 @@ pub struct MountainMesh {
 /// Returns an error if the string is not a valid PolyTrack v6 export code or
 /// if the embedded track data cannot be decoded.
 pub fn decode_track(export_string: &str) -> anyhow::Result<TrackInfo> {
+    if export_string.starts_with("PolyTrack14") {
+        let track = v5::decode_track_code(export_string)
+            .ok_or_else(|| anyhow!("failed to decode v5 track code"))?;
+        let data = v5::decode_track_data(&track.track_data)
+            .ok_or_else(|| anyhow!("failed to decode v5 track data"))?;
+        let env = match data.env {
+            v5::Environment::Desert => Desert,
+            v5::Environment::Summer => Summer,
+            v5::Environment::Winter => Winter,
+        };
+        let v5_dir_to_v6 = |d: v5::Direction| match d {
+            v5::Direction::XPos => Direction::XPos,
+            v5::Direction::XNeg => Direction::XNeg,
+            v5::Direction::YPos => Direction::YPos,
+            v5::Direction::YNeg => Direction::YNeg,
+            v5::Direction::ZPos => Direction::ZPos,
+            v5::Direction::ZNeg => Direction::ZNeg,
+        };
+        let v6_trackinfo = TrackInfo {
+            data_bytes: 0,
+            env,
+            min_x: data.min_x,
+            min_y: data.min_y,
+            min_z: data.min_z,
+            parts: data
+                .parts
+                .into_iter()
+                .map(|p| Part {
+                    id: p.id,
+                    amount: p.amount,
+                    blocks: p
+                        .blocks
+                        .into_iter()
+                        .map(|b| Block {
+                            color: b.color,
+                            cp_order: b.cp_order,
+                            dir: v5_dir_to_v6(b.dir),
+                            rotation: b.rotation,
+                            start_order: b.start_order,
+                            x: b.x,
+                            y: b.y,
+                            z: b.z,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            sun_dir: data.sun_dir,
+        };
+        return Ok(v6_trackinfo);
+    }
     let track =
         decode_track_code(export_string).ok_or_else(|| anyhow!("failed to decode track code"))?;
     decode_track_data(&track.track_data).ok_or_else(|| anyhow!("failed to decode track data"))
