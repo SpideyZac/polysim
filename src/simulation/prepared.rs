@@ -8,10 +8,9 @@
 //!
 //! [`SimulationWorker`]: super::worker::SimulationWorker
 
-use std::{collections::HashMap, f32::consts::PI};
+use std::collections::HashMap;
 
 use anyhow::anyhow;
-use parry3d::glamx::{EulerRot, Quat, Vec3};
 use polytrack_codes::v6::{Block, TrackInfo};
 
 use super::{
@@ -204,20 +203,62 @@ fn find_start_block<'a>(
 /// 4. Add the block's world-space origin.
 fn calculate_start_transform(start: &StartBlock, track_info: &TrackInfo) -> StartTransform {
     let block_quat = face_rotation(start.block.dir, start.block.rotation);
-    let y_flip = Quat::from_euler(EulerRot::XYZ, 0.0, PI, 0.0);
-    let quaternion = block_quat * y_flip;
-    let offset = quaternion * Vec3::from_array(start.start_offset);
+
+    // The simulation worker replaces Math.sin/cos with its 1-degree lookup
+    // table before TrackData::getStartTransform runs.  For Euler(0, PI, 0),
+    // Three.js therefore produces [0, 1, 0, table[180]], not glam's f32
+    // approximation. Keep every intermediate as a JS Number (f64) and only
+    // narrow at the WASM call boundary.
+    const SIN_PI: f64 = 1.224_646_799_147_353_2e-16;
+    let y_flip = [0.0, 1.0, 0.0, SIN_PI];
+    let quaternion = multiply_quaternions(block_quat, y_flip);
+    let offset = apply_quaternion(
+        [
+            start.start_offset[0] as f64,
+            start.start_offset[1] as f64,
+            start.start_offset[2] as f64,
+        ],
+        quaternion,
+    );
 
     let position = [
-        (start.block.x as i32 + track_info.min_x) as f32 * PART_SIZE + offset.x,
-        (start.block.y as i32 + track_info.min_y) as f32 * PART_SIZE + offset.y,
-        (start.block.z as i32 + track_info.min_z) as f32 * PART_SIZE + offset.z,
+        ((start.block.x as i32 + track_info.min_x) as f64 * PART_SIZE as f64 + offset[0]) as f32,
+        ((start.block.y as i32 + track_info.min_y) as f64 * PART_SIZE as f64 + offset[1]) as f32,
+        ((start.block.z as i32 + track_info.min_z) as f64 * PART_SIZE as f64 + offset[2]) as f32,
     ];
 
     StartTransform {
         position,
-        quaternion: quaternion.to_array(),
+        quaternion: quaternion.map(|v| v as f32),
     }
+}
+
+/// Three.js' `Quaternion.multiplyQuaternions`, preserving its operation order.
+#[inline]
+fn multiply_quaternions(a: [f64; 4], b: [f64; 4]) -> [f64; 4] {
+    let [x, y, z, w] = a;
+    let [bx, by, bz, bw] = b;
+    [
+        x * bw + w * bx + y * bz - z * by,
+        y * bw + w * by + z * bx - x * bz,
+        z * bw + w * bz + x * by - y * bx,
+        w * bw - x * bx - y * by - z * bz,
+    ]
+}
+
+/// Three.js' `Vector3.applyQuaternion`, preserving its operation order.
+#[inline]
+fn apply_quaternion(v: [f64; 3], q: [f64; 4]) -> [f64; 3] {
+    let [x, y, z] = v;
+    let [qx, qy, qz, qw] = q;
+    let tx = 2.0 * (qy * z - qz * y);
+    let ty = 2.0 * (qz * x - qx * z);
+    let tz = 2.0 * (qx * y - qy * x);
+    [
+        x + qw * tx + qy * tz - qz * ty,
+        y + qw * ty + qz * tx - qx * tz,
+        z + qw * tz + qx * ty - qy * tx,
+    ]
 }
 
 /// Returns the world-space XYZ centre of `block` on `track_info`.
@@ -310,6 +351,19 @@ mod tests {
             block_world_pos(&blk(5, 10, 3), &ti(-5, -10, -3)),
             [0.0, 0.0, 0.0]
         );
+    }
+
+    #[test]
+    fn worker_y_flip_matches_javascript_float_bits() {
+        // Direction XPositive, rotation 0. The tiny Z/W components are the
+        // clearest regression guard: a native f32 Euler conversion produces
+        // values around 1e-8 instead of the worker table's values around 1e-16.
+        let q = multiply_quaternions(
+            face_rotation(Direction::XPos, 0),
+            [0.0, 1.0, 0.0, 1.224_646_799_147_353_2e-16],
+        );
+        let bits = q.map(|v| (v as f32).to_bits());
+        assert_eq!(bits, [0x3f35_04f3, 0x3f35_04f3, 0xa4c7_ad06, 0x24c7_ad06]);
     }
 
     #[test]

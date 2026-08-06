@@ -62,8 +62,9 @@
 //!
 //! # Multiple simultaneous cars
 //!
-//! A single [`SimulationWorker`] can run many cars at once. Each car gets its
-//! own WASM-heap state buffer so reads never clobber each other:
+//! A single [`SimulationWorker`] can run many cars at once. It mirrors the
+//! browser worker's shared output buffer and deserialises each result before
+//! the next update can overwrite it:
 //!
 //! ```rust
 //! # use polysim::{physics::{PolyTrackPhysics, create_engine}, simulation::{PlayerController, PreparedTrack, SimulationWorker}};
@@ -88,9 +89,10 @@
 //!
 //! # Multiple parallel workers
 //!
-//! Compile the WASM module once, then instantiate one [`PolyTrackPhysics`] per
-//! thread via [`PolyTrackPhysics::from_module`]. Each worker owns its own WASM
-//! heap - no locking required between workers:
+//! Compile the WASM module once, then instantiate one
+//! [`PolyTrackPhysics`](physics::PolyTrackPhysics) per thread via
+//! [`PolyTrackPhysics::from_module`](physics::PolyTrackPhysics::from_module).
+//! Each worker owns its own WASM heap - no locking required between workers:
 //!
 //! ```rust
 //! # use polysim::physics::{PolyTrackPhysics, create_engine};
