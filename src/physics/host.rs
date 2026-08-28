@@ -140,7 +140,7 @@ pub(super) fn register(linker: &mut Linker<HostState>) -> Result<(), wasmtime::E
     linker.func_wrap(
         "a",
         "g",
-        |_: Caller<'_, HostState>, _fd: i32, _iov: i32, _iovcnt: i32, _pnum: i32| -> i32 { 1 },
+        |_: Caller<'_, HostState>, _fd: i32, _iov: i32, _iovcnt: i32, _pnum: i32| -> i32 { 0 },
     )?;
     linker.func_wrap("a", "c", |_: Caller<'_, HostState>| {})?;
     linker.func_wrap("a", "b", |_: Caller<'_, HostState>, _code: i32| {})?;

@@ -6,7 +6,7 @@
 //! generated identically.  Generation is driven by a deterministic table-based
 //! RNG ([`TableRng`]) so that the output is identical across platforms.
 
-use std::f32::consts::{PI, SQRT_2};
+use std::f64::consts::{PI, SQRT_2};
 
 use anyhow::anyhow;
 use polytrack_codes::{
@@ -21,23 +21,23 @@ use polytrack_codes::{
 use super::types::PART_SIZE;
 
 /// Vertical scale applied to normalised RNG heights when building the mountain.
-const HEIGHT_SCALE: f32 = 100.0;
+const HEIGHT_SCALE: f64 = 100.0;
 
 /// Radial distance between successive mountain rings, in world units.
-const MOUNTAIN_RING_STEP: f32 = 100.0;
+const MOUNTAIN_RING_STEP: f64 = 100.0;
 
 /// Number of angular segments per mountain ring.
 const MOUNTAIN_RING_SEGS: usize = 8;
 
 /// Minimum mountain radius regardless of track size, in world units.
-const MOUNTAIN_MIN_RADIUS: f32 = 200.0;
+const MOUNTAIN_MIN_RADIUS: f64 = 200.0;
 
 /// Base radius added to the scaled track half-diagonal.
-const MOUNTAIN_RADIUS_BASE: f32 = 160.0;
+const MOUNTAIN_RADIUS_BASE: f64 = 160.0;
 
 /// Tracks whose required mountain radius exceeds this value receive no mountain.
 /// Avoids generating a mesh too large to fit in WASM memory.
-const MOUNTAIN_MAX_RADIUS: f32 = 4500.0;
+const MOUNTAIN_MAX_RADIUS: f64 = 4500.0;
 
 /// Procedurally generated background mountain mesh.
 #[derive(Debug, Clone)]
@@ -186,7 +186,7 @@ pub fn build_mountain_mesh(track_info: &TrackInfo) -> MountainMesh {
 
     MountainMesh {
         vertices,
-        offset: [center[0], 0.0, center[1]],
+        offset: [center[0] as f32, 0.0, center[1] as f32],
     }
 }
 
@@ -204,20 +204,20 @@ fn track_bounds(track_info: &TrackInfo) -> (i32, i32) {
 }
 
 /// Compute the mountain radius from the track's bounding box.
-fn mountain_radius(track_info: &TrackInfo, max_x: i32, max_z: i32) -> f32 {
-    let width = (max_x - track_info.min_x).abs() as f32 * PART_SIZE / 2.0;
-    let height = (max_z - track_info.min_z).abs() as f32 * PART_SIZE / 2.0;
-    f32::max(
+fn mountain_radius(track_info: &TrackInfo, max_x: i32, max_z: i32) -> f64 {
+    let width = (max_x - track_info.min_x).abs() as f64 * PART_SIZE as f64 / 2.0;
+    let height = (max_z - track_info.min_z).abs() as f64 * PART_SIZE as f64 / 2.0;
+    f64::max(
         MOUNTAIN_MIN_RADIUS,
-        MOUNTAIN_RADIUS_BASE + f32::max(width, height) * SQRT_2,
+        MOUNTAIN_RADIUS_BASE + f64::max(width, height) * SQRT_2,
     )
 }
 
 /// Compute the world-space XZ centre of the track's bounding box.
-fn mountain_center(track_info: &TrackInfo, max_x: i32, max_z: i32) -> [f32; 2] {
+fn mountain_center(track_info: &TrackInfo, max_x: i32, max_z: i32) -> [f64; 2] {
     [
-        (track_info.min_x as f32 + (max_x - track_info.min_x) as f32 / 2.0) * PART_SIZE,
-        (track_info.min_z as f32 + (max_z - track_info.min_z) as f32 / 2.0) * PART_SIZE,
+        (track_info.min_x as f64 + (max_x - track_info.min_x) as f64 / 2.0) * PART_SIZE as f64,
+        (track_info.min_z as f64 + (max_z - track_info.min_z) as f64 / 2.0) * PART_SIZE as f64,
     ]
 }
 
@@ -226,7 +226,7 @@ fn mountain_center(track_info: &TrackInfo, max_x: i32, max_z: i32) -> [f32; 2] {
 ///
 /// Segments 0 and 7 are always 0 (ground level) to create natural openings.
 /// Segment 1 has a 50 % chance of being 0, consuming one RNG value regardless.
-fn generate_rings(ring_count: usize) -> Vec<Vec<f32>> {
+fn generate_rings(ring_count: usize) -> Vec<Vec<f64>> {
     let mut rng = TableRng::default();
     (0..ring_count)
         .map(|_| {
@@ -247,14 +247,17 @@ fn generate_rings(ring_count: usize) -> Vec<Vec<f32>> {
 ///
 /// Each ring-segment quad is split into two triangles.  The vertex buffer is
 /// pre-allocated to the exact required size to avoid reallocations.
-fn triangulate_rings(rings: &[Vec<f32>], radius: f32) -> Vec<f32> {
+fn triangulate_rings(rings: &[Vec<f64>], radius: f64) -> Vec<f32> {
     let ring_count = rings.len();
     // Each ring × each segment gap produces 2 triangles × 3 vertices × 3 floats.
     let mut verts = Vec::with_capacity(ring_count * (MOUNTAIN_RING_SEGS - 1) * 18);
 
     for e in 0..ring_count {
-        let t = (e as f32 / ring_count as f32) * PI * 2.0;
-        let i = ((e + 1) as f32 / ring_count as f32) * PI * 2.0;
+        // The browser builds this array with JS Numbers and only narrows when
+        // constructing Float32Array. Doing the trigonometry in f32 changes
+        // collision vertices by several ULPs.
+        let t = (e as f64 / ring_count as f64) * PI * 2.0;
+        let i = ((e + 1) as f64 / ring_count as f64) * PI * 2.0;
 
         let current = &rings[e];
         let next = if e + 1 < ring_count {
@@ -264,11 +267,11 @@ fn triangulate_rings(rings: &[Vec<f32>], radius: f32) -> Vec<f32> {
         };
 
         for seg in 0..current.len() - 1 {
-            let inner = radius + MOUNTAIN_RING_STEP * seg as f32;
-            let outer = radius + MOUNTAIN_RING_STEP * (seg + 1) as f32;
+            let inner = radius + MOUNTAIN_RING_STEP * seg as f64;
+            let outer = radius + MOUNTAIN_RING_STEP * (seg + 1) as f64;
 
             // Triangle 1: inner-current, inner-next, outer-next
-            verts.extend_from_slice(&[
+            let triangle_1 = [
                 t.cos() * inner,
                 current[seg] * HEIGHT_SCALE,
                 t.sin() * inner,
@@ -278,9 +281,10 @@ fn triangulate_rings(rings: &[Vec<f32>], radius: f32) -> Vec<f32> {
                 i.cos() * outer,
                 next[seg + 1] * HEIGHT_SCALE,
                 i.sin() * outer,
-            ]);
+            ];
+            verts.extend(triangle_1.map(|v| v as f32));
             // Triangle 2: inner-current, outer-next, outer-current
-            verts.extend_from_slice(&[
+            let triangle_2 = [
                 t.cos() * inner,
                 current[seg] * HEIGHT_SCALE,
                 t.sin() * inner,
@@ -290,7 +294,8 @@ fn triangulate_rings(rings: &[Vec<f32>], radius: f32) -> Vec<f32> {
                 t.cos() * outer,
                 current[seg + 1] * HEIGHT_SCALE,
                 t.sin() * outer,
-            ]);
+            ];
+            verts.extend(triangle_2.map(|v| v as f32));
         }
     }
 
@@ -313,7 +318,7 @@ struct TableRng {
 impl TableRng {
     /// Advance the index and return the next value from the table.
     #[inline]
-    fn next(&mut self) -> f32 {
+    fn next(&mut self) -> f64 {
         self.index = (self.index + 1) % RNG_TABLE.len();
         RNG_TABLE[self.index]
     }
@@ -324,7 +329,7 @@ impl TableRng {
 /// Values are fixed at compile time to guarantee identical mountain geometry
 /// across all platforms and runs.
 #[allow(clippy::excessive_precision)]
-const RNG_TABLE: &[f32] = &[
+const RNG_TABLE: &[f64] = &[
     0.12047764760664692,
     0.19645762332790628,
     0.5525629082262744,
@@ -626,5 +631,27 @@ mod tests {
             assert_eq!(ring[0], 0.0); // segment 0 always flat
             assert_eq!(ring[7], 0.0); // segment 7 always flat
         }
+    }
+
+    #[test]
+    fn mountain_vertices_match_browser_float_bits() {
+        // Chrome/Three.js computes in Number (f64), then Float32Array narrows.
+        let rings = generate_rings(20);
+        let vertices = triangulate_rings(&rings, 200.0);
+        let bits: Vec<u32> = vertices[..9].iter().map(|v| v.to_bits()).collect();
+        assert_eq!(
+            bits,
+            [
+                0x4348_0000,
+                0x0000_0000,
+                0x0000_0000,
+                0x433e_3618,
+                0x0000_0000,
+                0x4277_36ae,
+                0x438e_a892,
+                0x418a_cdca,
+                0x42b9_6903,
+            ]
+        );
     }
 }

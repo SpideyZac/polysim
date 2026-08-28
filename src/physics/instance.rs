@@ -170,7 +170,7 @@ impl PolyTrackPhysics {
         Ok(ptr)
     }
 
-    /// Free a wasm32 heap pointer previously returned by [`alloc_bytes`].
+    /// Free a wasm32 heap pointer previously returned by [`Self::alloc_bytes`].
     ///
     /// Passing `0` is a no-op, mirroring `free(NULL)` in C.
     pub fn free_wasm(&mut self, ptr: i32) -> Result<(), PhysicsError> {

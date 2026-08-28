@@ -9,6 +9,26 @@ Useful for TAS tooling, AI training, replay systems, and brute-force search.
 ## Requirements
 
 - **Rust 1.85+** (edition 2024 required by `polytrack-codes` and `wasmtime 47.0.3`)
+- The `polytrack_physics.wasm` file matching the PolyTrack version you want to reproduce
+
+## Exact browser parity
+
+PolySim runs PolyTrack's original WASM physics rather than reimplementing
+Bullet physics in native Rust. The surrounding Rust code mirrors the 0.6.2
+simulation worker's allocation order, JavaScript-number-to-`f32` conversion,
+start transform, mountain generation, track packing, and one-millisecond tick.
+
+For PolyTrack 0.6.2, use
+[`polytrack_physics.wasm`](https://app-polytrack.kodub.com/0.6.2/polytrack_physics.wasm).
+Its SHA-256 is
+`d4ef02676973d41afc34b23b5248f6950b35dc4cc7e3047e3a9c6bd88e4c180e`.
+Mixing assets, the JS worker, and WASM from different game versions is not
+expected to reproduce a browser replay exactly.
+
+`SimulationWorker::update_car_raw` returns the complete 227-byte WASM output
+for differential tests. A reference run of 1,000 forward-only frames on the
+included benchmark track matches the official 0.6.2 Chromium worker byte for
+byte (227,000 compared bytes).
 
 ## Usage
 
@@ -47,7 +67,8 @@ loop {
 
 ### Multiple cars in one worker
 
-Each car gets its own WASM-heap output buffer - updates never clobber each other:
+The worker uses the same shared output buffer as PolyTrack. Each call parses
+its result before the next update, so sequential multi-car updates are safe:
 
 ```rust
 worker.create_car(0)?;

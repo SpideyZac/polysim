@@ -1,7 +1,6 @@
 //! Shared constants, lookup tables, and primitive types used across the
 //! simulation module.
 
-use parry3d::glamx::Quat;
 use polytrack_codes::v6::Direction;
 
 /// World-space size of one track block, in metres.
@@ -17,42 +16,42 @@ pub const FINISH_LINE_IDS: [u8; 4] = [74, 6, 78, 76];
 /// exact floating-point literals used by the original game; do **not** round
 /// or normalise them, as that would break determinism.
 #[allow(clippy::excessive_precision, clippy::approx_constant)]
-pub const FACE_ROTATION_QUATS: [[Quat; 4]; 6] = [
+pub const FACE_ROTATION_QUATS: [[[f64; 4]; 4]; 6] = [
     [
-        Quat::from_xyzw(0.0, 0.0, 0.0, 1.0),
-        Quat::from_xyzw(0.0, 0.7071067811865475, 0.0, 0.7071067811865476),
-        Quat::from_xyzw(0.0, 1.0, 0.0, 0.0),
-        Quat::from_xyzw(0.0, 0.7071067811865476, 0.0, -0.7071067811865475),
+        [0.0, 0.0, 0.0, 1.0],
+        [0.0, 0.7071067811865475, 0.0, 0.7071067811865476],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.7071067811865476, 0.0, -0.7071067811865475],
     ],
     [
-        Quat::from_xyzw(0.0, 0.0, 1.0, 0.0),
-        Quat::from_xyzw(0.7071067811865475, 0.0, 0.7071067811865476, 0.0),
-        Quat::from_xyzw(1.0, 0.0, 0.0, 0.0),
-        Quat::from_xyzw(0.7071067811865476, 0.0, -0.7071067811865475, 0.0),
+        [0.0, 0.0, 1.0, 0.0],
+        [0.7071067811865475, 0.0, 0.7071067811865476, 0.0],
+        [1.0, 0.0, 0.0, 0.0],
+        [0.7071067811865476, 0.0, -0.7071067811865475, 0.0],
     ],
     [
-        Quat::from_xyzw(0.0, 0.0, -0.7071067811865477, 0.7071067811865475),
-        Quat::from_xyzw(0.5, 0.5, -0.5, 0.5),
-        Quat::from_xyzw(0.7071067811865475, 0.7071067811865477, 0.0, 0.0),
-        Quat::from_xyzw(0.5, 0.5, 0.5, -0.5),
+        [0.0, 0.0, -0.7071067811865477, 0.7071067811865475],
+        [0.5, 0.5, -0.5, 0.5],
+        [0.7071067811865475, 0.7071067811865477, 0.0, 0.0],
+        [0.5, 0.5, 0.5, -0.5],
     ],
     [
-        Quat::from_xyzw(0.0, 0.0, 0.7071067811865475, 0.7071067811865476),
-        Quat::from_xyzw(0.5, -0.5, 0.5, 0.5),
-        Quat::from_xyzw(0.7071067811865476, -0.7071067811865475, 0.0, 0.0),
-        Quat::from_xyzw(0.5, -0.5, -0.5, -0.5),
+        [0.0, 0.0, 0.7071067811865475, 0.7071067811865476],
+        [0.5, -0.5, 0.5, 0.5],
+        [0.7071067811865476, -0.7071067811865475, 0.0, 0.0],
+        [0.5, -0.5, -0.5, -0.5],
     ],
     [
-        Quat::from_xyzw(0.7071067811865475, 0.0, 0.0, 0.7071067811865476),
-        Quat::from_xyzw(0.5, 0.5, 0.5, 0.5),
-        Quat::from_xyzw(0.0, 0.7071067811865476, 0.7071067811865475, 0.0),
-        Quat::from_xyzw(-0.5, 0.5, 0.5, -0.5),
+        [0.7071067811865475, 0.0, 0.0, 0.7071067811865476],
+        [0.5, 0.5, 0.5, 0.5],
+        [0.0, 0.7071067811865476, 0.7071067811865475, 0.0],
+        [-0.5, 0.5, 0.5, -0.5],
     ],
     [
-        Quat::from_xyzw(-0.7071067811865477, 0.0, 0.0, 0.7071067811865475),
-        Quat::from_xyzw(-0.5, -0.5, 0.5, 0.5),
-        Quat::from_xyzw(0.0, -0.7071067811865475, 0.7071067811865477, 0.0),
-        Quat::from_xyzw(0.5, -0.5, 0.5, -0.5),
+        [-0.7071067811865477, 0.0, 0.0, 0.7071067811865475],
+        [-0.5, -0.5, 0.5, 0.5],
+        [0.0, -0.7071067811865475, 0.7071067811865477, 0.0],
+        [0.5, -0.5, 0.5, -0.5],
     ],
 ];
 
@@ -60,7 +59,7 @@ pub const FACE_ROTATION_QUATS: [[Quat; 4]; 6] = [
 /// `rotation` index.  Panics in debug if indices are out of range; the game
 /// never produces out-of-range values from valid track data.
 #[inline]
-pub fn face_rotation(dir: Direction, rotation: u8) -> Quat {
+pub fn face_rotation(dir: Direction, rotation: u8) -> [f64; 4] {
     FACE_ROTATION_QUATS[dir as usize][rotation as usize]
 }
 

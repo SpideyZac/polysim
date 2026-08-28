@@ -17,8 +17,6 @@ const MAX_CAR_ID: u32 = 1 << 16;
 /// Per-car state tracked on the Rust side.
 struct Car {
     controls: PlayerController,
-    /// Pointer to this car's dedicated 227-byte state read-back buffer in WASM heap.
-    state_buffer_ptr: i32,
 }
 
 /// Drives one WASM physics instance for one or more cars on a single track.
@@ -60,24 +58,15 @@ pub struct SimulationWorker {
     /// `set_car_controls`/`update_car` instead of the linear scan a
     /// `Vec<Car>` + `.find()` would need on every tick.
     cars: Vec<Option<Car>>,
-    /// Pointer to the packed track data blob in WASM heap.
-    track_ptr: i32,
-    /// Number of 19-byte block records in the track blob.
-    part_count: i32,
-    /// Pointer to the mountain vertex buffer in WASM heap, or `0` if the
-    /// track is too large for a mountain.
-    mountain_ptr: i32,
-    /// Number of `f32` values in the mountain vertex buffer (`0` = no mountain).
-    mountain_vertices_len: i32,
-    /// World-space XYZ translation of the mountain mesh.
-    mountain_offset: [f32; 3],
+    /// The official worker allocates one shared 227-byte output buffer as soon
+    /// as the WASM runtime is ready, before processing its Init message.
+    state_buffer_ptr: i32,
     /// Prepared track data shared across all cars on this worker.
     prepared: PreparedTrack,
 }
 
 impl SimulationWorker {
-    /// Allocate WASM memory for the track and mountain data and return a new
-    /// worker.
+    /// Allocate the official worker's shared state buffer and return a new worker.
     ///
     /// Does **not** call [`init`] - that must be called separately before
     /// creating any cars, so that callers can choose when to pay the
@@ -90,35 +79,15 @@ impl SimulationWorker {
     /// [`PhysicsError`]: crate::physics::PhysicsError
     pub fn new(mut physics: PolyTrackPhysics, prepared: PreparedTrack) -> anyhow::Result<Self> {
         let exports = physics.exports();
-
-        // When the mountain is empty (track too large), pass ptr=0 and len=0
-        // rather than calling malloc(0) whose return value is implementation-
-        // defined and may be NULL in Emscripten's allocator.
-        let (mountain_ptr, mountain_vertices_len) = if prepared.mountain.vertices.is_empty() {
-            (0, 0)
-        } else {
-            let ptr = physics
-                .alloc_bytes(cast_slice(&prepared.mountain.vertices))
-                .context("allocate mountain vertex buffer")?;
-            (ptr, prepared.mountain.vertices.len() as i32)
-        };
-
-        let track_ptr = physics
-            .alloc_bytes(&prepared.track_bytes)
-            .context("allocate track data")?;
-
-        let part_count = (prepared.track_bytes.len() / 19) as i32;
-        let mountain_offset = prepared.mountain.offset;
+        let state_buffer_ptr = physics
+            .alloc_bytes(&[0u8; 227])
+            .context("allocate shared car state buffer")?;
 
         Ok(Self {
             physics,
             exports,
             cars: Vec::new(),
-            track_ptr,
-            part_count,
-            mountain_ptr,
-            mountain_vertices_len,
-            mountain_offset,
+            state_buffer_ptr,
             prepared,
         })
     }
@@ -191,20 +160,14 @@ impl SimulationWorker {
     /// Spawn a new car in the simulation at the track's start position.
     ///
     /// `car_id` must be unique among all cars currently in this worker and
-    /// below [`MAX_CAR_ID`] (car ids directly index internal storage).
-    /// Each car gets its own dedicated WASM state buffer so multiple cars
-    /// can be updated independently without overwriting each other's output.
+    /// below `MAX_CAR_ID` (car ids directly index internal storage).
+    /// Output is read from the same shared buffer as the official worker and
+    /// deserialised before the next update can overwrite it.
     pub fn create_car(&mut self, car_id: u32) -> anyhow::Result<()> {
         let idx = self.car_index(car_id)?;
         if matches!(self.cars.get(idx), Some(Some(_))) {
             bail!("car {car_id} already exists");
         }
-
-        // Allocate a dedicated 227-byte read-back buffer for this car.
-        let state_buffer_ptr = self
-            .physics
-            .alloc_bytes(&[0u8; 227])
-            .with_context(|| format!("allocate state buffer for car {car_id}"))?;
 
         self.spawn_car_model(car_id)
             .with_context(|| format!("spawn car model for car {car_id}"))?;
@@ -214,7 +177,6 @@ impl SimulationWorker {
         }
         self.cars[idx] = Some(Car {
             controls: PlayerController::default(),
-            state_buffer_ptr,
         });
         Ok(())
     }
@@ -223,10 +185,8 @@ impl SimulationWorker {
     pub fn delete_car(&mut self, car_id: u32) -> anyhow::Result<()> {
         self.physics
             .call(&self.exports.delete_car_model, car_id as i32)?;
-        if let Some(slot) = self.cars.get_mut(car_id as usize)
-            && let Some(car) = slot.take()
-        {
-            self.physics.free_wasm(car.state_buffer_ptr)?;
+        if let Some(slot) = self.cars.get_mut(car_id as usize) {
+            slot.take();
         }
         Ok(())
     }
@@ -262,18 +222,31 @@ impl SimulationWorker {
     /// [`create_car`]: Self::create_car
     /// [`reset_car`]: Self::reset_car
     fn spawn_car_model(&mut self, car_id: u32) -> anyhow::Result<()> {
+        // Match simulation_worker.bundle.js exactly: mountain and track are
+        // allocated immediately before createCarModel and freed immediately
+        // afterwards. Allocation order can affect Bullet's internal pointer-
+        // keyed containers, so persistent buffers are not equivalent here.
+        let mountain_ptr = self
+            .physics
+            .alloc_bytes(cast_slice(&self.prepared.mountain.vertices))
+            .context("allocate mountain vertex buffer")?;
+        let track_ptr = self
+            .physics
+            .alloc_bytes(&self.prepared.track_bytes)
+            .context("allocate track data")?;
+
         let s = &self.prepared.start;
-        self.physics.call(
+        let result = self.physics.call(
             &self.exports.create_car_model,
             (
                 car_id as i32,
-                self.mountain_ptr,
-                self.mountain_vertices_len,
-                self.mountain_offset[0],
-                self.mountain_offset[1],
-                self.mountain_offset[2],
-                self.track_ptr,
-                self.part_count,
+                mountain_ptr,
+                self.prepared.mountain.vertices.len() as i32,
+                self.prepared.mountain.offset[0],
+                self.prepared.mountain.offset[1],
+                self.prepared.mountain.offset[2],
+                track_ptr,
+                (self.prepared.track_bytes.len() / 19) as i32,
                 s.position[0],
                 s.position[1],
                 s.position[2],
@@ -282,7 +255,15 @@ impl SimulationWorker {
                 s.quaternion[2],
                 s.quaternion[3],
             ),
-        )?;
+        );
+
+        // Preserve the browser worker's successful-path free order. Also try
+        // to release both temporary buffers if the WASM call reports an error.
+        let free_mountain = self.physics.free_wasm(mountain_ptr);
+        let free_track = self.physics.free_wasm(track_ptr);
+        result?;
+        free_mountain?;
+        free_track?;
         Ok(())
     }
 
@@ -311,10 +292,43 @@ impl SimulationWorker {
     /// Advance the physics simulation by one tick for `car_id` and return the
     /// resulting [`CarState`].
     ///
-    /// Each car writes into its own dedicated WASM buffer, so multiple cars
-    /// can be updated in sequence without clobbering each other's output.
+    /// The result is deserialised from the official worker's shared buffer
+    /// before a later car update can overwrite it.
     pub fn update_car(&mut self, car_id: u32) -> anyhow::Result<CarState> {
-        let (up, right, down, left, reset, state_buffer_ptr) = {
+        self.advance_car(car_id)?;
+
+        let raw = self
+            .physics
+            .wasm_slice(self.state_buffer_ptr, 227)
+            .context("read car state buffer")?;
+
+        CarState::deserialize(
+            &raw[4..],
+            self.prepared.max_checkpoint,
+            &self.prepared.checkpoint_positions,
+            &self.prepared.finish_positions,
+        )
+        .context("deserialize car state")
+    }
+
+    /// Advance one tick and return the exact 227 bytes emitted by the
+    /// original physics module (including its four-byte car-id header).
+    ///
+    /// This is primarily useful for differential testing against the browser
+    /// worker and for byte-exact replay validation. Prefer [`Self::update_car`] when
+    /// the parsed [`CarState`] is sufficient.
+    pub fn update_car_raw(&mut self, car_id: u32) -> anyhow::Result<[u8; 227]> {
+        self.advance_car(car_id)?;
+        let raw = self
+            .physics
+            .wasm_slice(self.state_buffer_ptr, 227)
+            .context("read car state buffer")?;
+        Ok(raw.try_into().expect("slice length is fixed at 227 bytes"))
+    }
+
+    /// Invoke the WASM update export using the controls currently stored for a car.
+    fn advance_car(&mut self, car_id: u32) -> anyhow::Result<()> {
+        let (up, right, down, left, reset) = {
             let c = self.car_mut(car_id)?;
             (
                 c.controls.up as i32,
@@ -322,7 +336,6 @@ impl SimulationWorker {
                 c.controls.down as i32,
                 c.controls.left as i32,
                 c.controls.reset as i32,
-                c.state_buffer_ptr,
             )
         };
 
@@ -335,22 +348,10 @@ impl SimulationWorker {
                 down,
                 left,
                 reset,
-                state_buffer_ptr,
+                self.state_buffer_ptr,
             ),
         )?;
-
-        let raw = self
-            .physics
-            .wasm_slice(state_buffer_ptr, 227)
-            .context("read car state buffer")?;
-
-        CarState::deserialize(
-            &raw[4..],
-            self.prepared.max_checkpoint,
-            &self.prepared.checkpoint_positions,
-            &self.prepared.finish_positions,
-        )
-        .context("deserialize car state")
+        Ok(())
     }
 
     /// Run the WASM module's built-in determinism self-test.

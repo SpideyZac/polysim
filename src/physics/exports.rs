@@ -91,7 +91,7 @@ pub type UpdateCarModelArgs = (i32, i32, i32, i32, i32, i32, i32);
 /// Cloneable handles to every typed function exported by the physics WASM
 /// module.
 ///
-/// Obtained via [`PolyTrackPhysics::exports`].  All handles share the same
+/// Obtained via [`PolyTrackPhysics::exports`](super::PolyTrackPhysics::exports). All handles share the same
 /// underlying wasmtime store; they are only valid while that store lives.
 #[derive(Clone)]
 pub struct Exports {
